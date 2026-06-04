@@ -1,6 +1,8 @@
 import json
 import os
+from langchain_core.messages import HumanMessage
 from .state import RedTeamState
+from ..models.client import get_model
 
 ATTACKS_PATH = os.path.join(os.path.dirname(__file__), "..", "attacks", "library.json")
 
@@ -38,3 +40,12 @@ def select_attack_node(state: RedTeamState) -> dict:
         "judge_reasoning": "",
         "violation_type": "none",
     }
+
+
+def run_attack_node(state: RedTeamState) -> dict:
+    model = get_model(state["target_provider"], state["target_model"])
+    try:
+        response = model.invoke([HumanMessage(content=state["current_prompt"])])
+        return {"model_response": response.content}
+    except Exception as e:
+        return {"model_response": f"ERROR: {str(e)}"}
