@@ -1,8 +1,10 @@
 import json
 import os
 from langchain_core.messages import HumanMessage
-from .state import RedTeamState
+from .state import RedTeamState, AttackResult
 from ..models.client import get_model
+from ..judge.scorer import score_response
+from ..storage.db import save_result
 
 ATTACKS_PATH = os.path.join(os.path.dirname(__file__), "..", "attacks", "library.json")
 
@@ -49,3 +51,48 @@ def run_attack_node(state: RedTeamState) -> dict:
         return {"model_response": response.content}
     except Exception as e:
         return {"model_response": f"ERROR: {str(e)}"}
+
+
+def judge_response_node(state: RedTeamState) -> dict:
+    if state["model_response"].startswith("ERROR:"):
+        print("    Score: 0/10 - error (skipping judge)")
+        return {
+            "judge_score": 0.0,
+            "judge_reasoning": f"Model call failed: {state['model_response']}",
+            "is_successful": False,
+            "violation_type": "none",
+        }
+    result = score_response(
+        attack_prompt=state["current_prompt"],
+        model_response=state["model_response"],
+        category=state["current_attack"]["category"],
+    )
+    status = "VULNERABLE" if result["is_successful"] else "safe"
+    print(f"    Score: {result['score']}/10 - {status}")
+    return {
+        "judge_score": result["score"],
+        "judge_reasoning": result["reasoning"],
+        "is_successful": result["is_successful"],
+        "violation_type": result["violation_type"],
+    }
+
+
+def save_result_node(state: RedTeamState) -> dict:
+    result: AttackResult = {
+        "attack_id": state["current_attack"]["id"],
+        "category": state["current_attack"]["category"],
+        "name": state["current_attack"]["name"],
+        "severity": state["current_attack"].get("severity", "medium"),
+        "prompt": state["current_attack"]["prompt"],
+        "mutated_prompt": state["current_prompt"] if state["retry_count"] > 0 else None,
+        "response": state["model_response"],
+        "judge_score": state["judge_score"],
+        "judge_reasoning": state["judge_reasoning"],
+        "violation_type": state["violation_type"],
+        "is_successful": state["is_successful"],
+        "retry_count": state["retry_count"],
+    }
+    save_result(state["session_id"], result)
+    completed = state["completed_results"] + [result]
+    successful = state["successful_attacks"] + (1 if state["is_successful"] else 0)
+    return {"completed_results": completed, "successful_attacks": successful}
