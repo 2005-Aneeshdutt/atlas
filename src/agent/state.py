@@ -5,6 +5,7 @@ class AttackResult(TypedDict):
     attack_id: str
     category: str
     name: str
+    severity: str
     prompt: str
     mutated_prompt: Optional[str]
     response: str
@@ -20,6 +21,7 @@ class RedTeamState(TypedDict):
     target_model: str
     target_provider: str
     category_filter: Optional[str]
+    score_threshold: int
     attacks_queue: List[dict]
     current_attack: Optional[dict]
     current_prompt: str
