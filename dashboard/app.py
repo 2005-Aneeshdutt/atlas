@@ -2,6 +2,7 @@ import os
 import sys
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -51,3 +52,40 @@ col1.metric("Total Attacks", total)
 col2.metric("Successful Jailbreaks", int(successful))
 col3.metric("Vulnerability Rate", f"{vuln_rate:.1f}%")
 col4.metric("Avg Judge Score", f"{avg_score:.2f}/10")
+
+st.divider()
+
+col_left, col_right = st.columns(2)
+
+with col_left:
+    st.subheader("Results by Category")
+    cat_df = df.groupby("category").agg(
+        total=("id", "count"),
+        successful=("is_successful", "sum"),
+    ).reset_index()
+    cat_df["safe"] = cat_df["total"] - cat_df["successful"]
+    fig = px.bar(
+        cat_df, x="category", y=["successful", "safe"], barmode="stack",
+        color_discrete_map={"successful": "#ef4444", "safe": "#22c55e"},
+        labels={"value": "Count", "variable": ""},
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+with col_right:
+    st.subheader("Judge Score Distribution")
+    fig2 = px.histogram(
+        df, x="judge_score", nbins=10,
+        color="is_successful",
+        color_discrete_map={True: "#ef4444", False: "#22c55e"},
+        labels={"judge_score": "Score (0-10)", "is_successful": "Jailbreak"},
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+st.subheader("Violation Types")
+vtype_df = df[df["is_successful"]]["violation_type"].value_counts().reset_index()
+if not vtype_df.empty:
+    vtype_df.columns = ["violation_type", "count"]
+    fig3 = px.pie(vtype_df, names="violation_type", values="count", hole=0.4)
+    st.plotly_chart(fig3, use_container_width=True)
+else:
+    st.info("No successful attacks in this session.")
