@@ -38,12 +38,16 @@ def init_db():
     """)
     conn.commit()
 
-    # migrate existing DBs that predate the severity column
-    try:
-        conn.execute("ALTER TABLE attack_results ADD COLUMN severity TEXT DEFAULT 'medium'")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # column already exists
+    for migration in [
+        "ALTER TABLE attack_results ADD COLUMN severity TEXT DEFAULT 'medium'",
+        "ALTER TABLE attack_results ADD COLUMN attack_latency_ms INTEGER DEFAULT 0",
+        "ALTER TABLE attack_results ADD COLUMN judge_latency_ms INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(migration)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     conn.close()
 
@@ -63,8 +67,9 @@ def save_result(session_id: str, result: dict):
     conn.execute(
         """INSERT INTO attack_results
         (session_id, attack_id, category, name, severity, prompt, mutated_prompt, response,
-         judge_score, judge_reasoning, violation_type, is_successful, retry_count, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         judge_score, judge_reasoning, violation_type, is_successful, retry_count,
+         attack_latency_ms, judge_latency_ms, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             session_id,
             result["attack_id"],
@@ -79,6 +84,8 @@ def save_result(session_id: str, result: dict):
             result["violation_type"],
             1 if result["is_successful"] else 0,
             result["retry_count"],
+            result.get("attack_latency_ms", 0),
+            result.get("judge_latency_ms", 0),
             datetime.now().isoformat(),
         ),
     )

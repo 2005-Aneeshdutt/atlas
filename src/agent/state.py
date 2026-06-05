@@ -14,6 +14,8 @@ class AttackResult(TypedDict):
     violation_type: str
     is_successful: bool
     retry_count: int
+    attack_latency_ms: int
+    judge_latency_ms: int
 
 
 class RedTeamState(TypedDict):
@@ -32,6 +34,8 @@ class RedTeamState(TypedDict):
     is_successful: bool
     retry_count: int
     max_retries: int
+    attack_latency_ms: int
+    judge_latency_ms: int
     completed_results: List[AttackResult]
     total_attacks: int
     successful_attacks: int

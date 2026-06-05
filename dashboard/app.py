@@ -3,6 +3,7 @@ import sys
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -46,6 +47,12 @@ df["is_successful"] = df["is_successful"].astype(bool)
 if "severity" not in df.columns:
     df["severity"] = "medium"
 df["severity"] = df["severity"].fillna("medium")
+if "attack_latency_ms" not in df.columns:
+    df["attack_latency_ms"] = 0
+if "judge_latency_ms" not in df.columns:
+    df["judge_latency_ms"] = 0
+df["attack_latency_ms"] = df["attack_latency_ms"].fillna(0).astype(int)
+df["judge_latency_ms"] = df["judge_latency_ms"].fillna(0).astype(int)
 
 total = len(df)
 successful = df["is_successful"].sum()
@@ -56,13 +63,18 @@ total_weight = df["severity"].map(SEVERITY_WEIGHTS).sum()
 vuln_weight = df[df["is_successful"]]["severity"].map(SEVERITY_WEIGHTS).sum()
 weighted_rate = (vuln_weight / total_weight * 100) if total_weight > 0 else 0
 
-col1, col2, col3, col4, col5 = st.columns(5)
+avg_latency = df["attack_latency_ms"].mean()
+avg_latency_label = f"{avg_latency/1000:.2f}s" if avg_latency >= 1000 else f"{avg_latency:.0f}ms"
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Total Attacks", total)
 col2.metric("Successful Jailbreaks", int(successful))
 col3.metric("Vulnerability Rate", f"{vuln_rate:.1f}%")
 col4.metric("Weighted Risk Score", f"{weighted_rate:.1f}%",
             help="Weights each attack by severity: high=3, medium=2, low=1")
 col5.metric("Avg Judge Score", f"{avg_score:.2f}/10")
+col6.metric("Avg Response Latency", avg_latency_label,
+            help="Mean time for target model to respond per attack")
 
 st.divider()
 
@@ -91,6 +103,41 @@ with col_right:
         labels={"judge_score": "Score (0-10)", "is_successful": "Jailbreak"},
     )
     st.plotly_chart(fig2, use_container_width=True)
+
+st.subheader("Response Latency vs Judge Score")
+scatter_df = df[df["attack_latency_ms"] > 0].copy()
+if not scatter_df.empty:
+    fig_scatter = px.scatter(
+        scatter_df,
+        x="attack_latency_ms",
+        y="judge_score",
+        color="is_successful",
+        symbol="category",
+        hover_data=["name", "category", "severity"],
+        color_discrete_map={True: "#ef4444", False: "#22c55e"},
+        labels={
+            "attack_latency_ms": "Response Latency (ms)",
+            "judge_score": "Judge Score (0-10)",
+            "is_successful": "Jailbreak",
+        },
+        title="Does a jailbroken model respond faster?",
+    )
+    fig_scatter.update_traces(marker=dict(size=10, opacity=0.8))
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    lat_vuln = scatter_df[scatter_df["is_successful"]]["attack_latency_ms"].mean()
+    lat_safe = scatter_df[~scatter_df["is_successful"]]["attack_latency_ms"].mean()
+    if lat_vuln and lat_safe:
+        diff = lat_vuln - lat_safe
+        direction = "slower" if diff > 0 else "faster"
+        st.caption(
+            f"Vulnerable responses were **{abs(diff):.0f}ms {direction}** on average than safe ones "
+            f"({lat_vuln:.0f}ms vs {lat_safe:.0f}ms) — "
+            + ("suggesting safety processing adds latency." if diff < 0 else
+               "suggesting the model spent more time generating harmful content.")
+        )
+else:
+    st.info("Run a session to see latency data.")
 
 col_sev, col_vtype = st.columns(2)
 

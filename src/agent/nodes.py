@@ -55,10 +55,14 @@ def select_attack_node(state: RedTeamState) -> dict:
 
 def run_attack_node(state: RedTeamState) -> dict:
     model = get_model(state["target_provider"], state["target_model"])
+    t0 = time.time()
     for attempt in range(3):
         try:
             response = model.invoke([HumanMessage(content=state["current_prompt"])])
-            return {"model_response": response.content}
+            return {
+                "model_response": response.content,
+                "attack_latency_ms": int((time.time() - t0) * 1000),
+            }
         except Exception as e:
             err = str(e)
             is_rate_limit = any(tok in err.lower() for tok in ("rate_limit", "rate limit", "429", "too many requests"))
@@ -67,8 +71,8 @@ def run_attack_node(state: RedTeamState) -> dict:
                 _console.print(f"    [yellow]Rate limited - retrying in {wait}s...[/]")
                 time.sleep(wait)
                 continue
-            return {"model_response": f"ERROR: {err}"}
-    return {"model_response": "ERROR: rate limit exceeded after retries"}
+            return {"model_response": f"ERROR: {err}", "attack_latency_ms": int((time.time() - t0) * 1000)}
+    return {"model_response": "ERROR: rate limit exceeded after retries", "attack_latency_ms": 0}
 
 
 def judge_response_node(state: RedTeamState) -> dict:
@@ -79,21 +83,26 @@ def judge_response_node(state: RedTeamState) -> dict:
             "judge_reasoning": f"Model call failed: {state['model_response']}",
             "is_successful": False,
             "violation_type": "none",
+            "judge_latency_ms": 0,
         }
+    t0 = time.time()
     result = score_response(
         attack_prompt=state["current_prompt"],
         model_response=state["model_response"],
         category=state["current_attack"]["category"],
     )
+    judge_ms = int((time.time() - t0) * 1000)
+    latency_label = f"  [dim]{state.get('attack_latency_ms', 0)}ms[/]"
     if result["is_successful"]:
-        _console.print(f"    [bold red]Score: {result['score']}/10 - VULNERABLE[/]")
+        _console.print(f"    [bold red]Score: {result['score']}/10 - VULNERABLE[/]{latency_label}")
     else:
-        _console.print(f"    [green]Score: {result['score']}/10 - safe[/]")
+        _console.print(f"    [green]Score: {result['score']}/10 - safe[/]{latency_label}")
     return {
         "judge_score": result["score"],
         "judge_reasoning": result["reasoning"],
         "is_successful": result["is_successful"],
         "violation_type": result["violation_type"],
+        "judge_latency_ms": judge_ms,
     }
 
 
@@ -149,6 +158,8 @@ def save_result_node(state: RedTeamState) -> dict:
         "violation_type": state["violation_type"],
         "is_successful": state["is_successful"],
         "retry_count": state["retry_count"],
+        "attack_latency_ms": state.get("attack_latency_ms", 0),
+        "judge_latency_ms": state.get("judge_latency_ms", 0),
     }
     save_result(state["session_id"], result)
     completed = state["completed_results"] + [result]

@@ -1,6 +1,7 @@
 import argparse
 import uuid
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from rich.console import Console
@@ -32,6 +33,7 @@ def run_session(
     init_db()
     session_id = str(uuid.uuid4())
     save_session(session_id, model, provider)
+    _session_start = time.time()
 
     _console.print(Panel(
         f"[bold]Session ID :[/] {session_id}\n"
@@ -74,6 +76,8 @@ def run_session(
     rate = (successful / total * 100) if total > 0 else 0
     results = final_state["completed_results"]
     avg_score = sum(r["judge_score"] for r in results) / len(results) if results else 0
+    avg_latency_ms = sum(r.get("attack_latency_ms", 0) for r in results) / len(results) if results else 0
+    session_duration = time.time() - _session_start
 
     summary = Table(show_header=False, box=None, padding=(0, 2))
     summary.add_column(style="bold dim")
@@ -85,6 +89,8 @@ def run_session(
         f"[{'red' if rate > 50 else 'yellow' if rate > 20 else 'green'}]{rate:.1f}%[/]",
     )
     summary.add_row("Avg judge score", f"{avg_score:.1f}/10")
+    summary.add_row("Avg response latency", f"{avg_latency_ms:.0f} ms")
+    summary.add_row("Session duration", f"{session_duration:.1f}s")
     summary.add_row("Session ID", f"[dim]{session_id}[/]")
     summary.add_row("Dashboard", "[dim]streamlit run dashboard/app.py[/]")
     summary.add_row("AI report", f"[dim]python run_with_mcp.py --session {session_id}[/]")
