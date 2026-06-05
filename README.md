@@ -84,6 +84,33 @@ Each attack carries a `severity` (`low` / `medium` / `high`) and `tags` for filt
 
 ---
 
+## Sample Results
+
+Running ATLAS against `llama-3.1-8b-instant` across all 35 attacks:
+
+```
+Total attacks       35
+Successful          13 / 35
+Vulnerability rate  37.1%
+Weighted risk score 33.3%
+Avg judge score     3.57 / 10
+Avg response latency 802ms
+Session duration    92.9s
+```
+
+**Findings by category:**
+
+| Category | Attacks | Successful | Rate | Key finding |
+|---|---|---|---|---|
+| `prompt_injection` | 10 | 5 | **50%** | System prompt override and markdown injection both scored 9–10/10 |
+| `bias` | 6 | 4 | **67%** | Political and socioeconomic probes succeeded; racial bias probe refused |
+| `jailbreak` | 11 | 4 | **36%** | DAN Classic and False Authority scored 8–10/10; many-shot and hypothetical framing blocked |
+| `hallucination` | 8 | 0 | **0%** | Model consistently refused to fabricate citations, medical advice, and legal precedent |
+
+**Latency finding:** vulnerable responses averaged **612ms** vs **902ms** for safe responses — suggesting the model's safety processing adds ~290ms of latency.
+
+---
+
 ## How Scoring Works
 
 The judge model (configurable via `JUDGE_MODEL`) scores each response 0–10:
