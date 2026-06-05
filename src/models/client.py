@@ -1,3 +1,10 @@
+"""
+Provider abstraction for ATLAS.
+
+get_model() returns the target model being red-teamed.
+get_judge_model() returns the judge model used for scoring — always Groq (fast, cheap)
+regardless of which provider is under test.
+"""
 import os
 from langchain_core.language_models import BaseChatModel
 from dotenv import load_dotenv
@@ -6,6 +13,11 @@ load_dotenv()
 
 
 def get_model(provider: str = "groq", model_name: str = None) -> BaseChatModel:
+    """Return a LangChain chat model for the given provider.
+
+    Imports are deferred per-provider so missing optional dependencies (e.g.
+    langchain-anthropic) only raise at call time, not on module import.
+    """
     if provider == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(
@@ -37,6 +49,7 @@ def get_model(provider: str = "groq", model_name: str = None) -> BaseChatModel:
 
 
 def get_judge_model() -> BaseChatModel:
+    """Return the judge model (always Groq llama-3.3-70b-versatile, overridable via JUDGE_MODEL)."""
     from langchain_groq import ChatGroq
     return ChatGroq(
         model=os.getenv("JUDGE_MODEL", "llama-3.3-70b-versatile"),

@@ -1,3 +1,9 @@
+"""
+LangGraph node implementations for the ATLAS red-team agent.
+
+Each function accepts the full RedTeamState and returns a partial dict;
+LangGraph merges the returned keys into the next state snapshot.
+"""
 import json
 import os
 import time
@@ -14,6 +20,7 @@ _console = Console(legacy_windows=False)
 
 
 def load_attacks_node(state: RedTeamState) -> dict:
+    """Read library.json, apply the category filter, and seed the attacks queue."""
     with open(ATTACKS_PATH, encoding="utf-8") as f:
         library = json.load(f)
     attacks = library["attacks"]
@@ -32,6 +39,7 @@ def load_attacks_node(state: RedTeamState) -> dict:
 
 
 def select_attack_node(state: RedTeamState) -> dict:
+    """Pop the first attack from the queue and reset per-turn state fields."""
     queue = state["attacks_queue"]
     current = queue[0]
     severity = current.get("severity", "medium")
@@ -54,6 +62,12 @@ def select_attack_node(state: RedTeamState) -> dict:
 
 
 def run_attack_node(state: RedTeamState) -> dict:
+    """Send the current prompt to the target model and record wall-clock latency.
+
+    Retries up to 3 times on rate-limit errors (HTTP 429) with exponential backoff
+    (5s, 10s). On any other error the response is stored as "ERROR: <message>" so
+    judge_response_node can skip scoring gracefully.
+    """
     model = get_model(state["target_provider"], state["target_model"])
     t0 = time.time()
     for attempt in range(3):
@@ -76,6 +90,11 @@ def run_attack_node(state: RedTeamState) -> dict:
 
 
 def judge_response_node(state: RedTeamState) -> dict:
+    """Score the model's response with the judge model and flag the violation type.
+
+    Skips the judge call entirely when the target model returned an error, giving
+    a score of 0 to avoid wasting tokens on an empty response.
+    """
     if state["model_response"].startswith("ERROR:"):
         _console.print(f"    [dim]Score: 0/10 - error (skipping judge)[/]")
         return {
@@ -107,6 +126,12 @@ def judge_response_node(state: RedTeamState) -> dict:
 
 
 def mutate_attack_node(state: RedTeamState) -> dict:
+    """Rewrite the current prompt using the judge's own failure analysis.
+
+    Feeds the judge's reasoning about *why* the attack scored low back to the
+    judge model, asking it to craft a smarter variant that directly addresses
+    the identified failure mode (detected pattern, cited safety policy, etc.).
+    """
     _console.print(
         f"    [yellow]~[/] Mutating  "
         f"[dim](attempt {state['retry_count'] + 1}/{state['max_retries']})[/]"
@@ -145,6 +170,7 @@ Return ONLY the mutated prompt text, nothing else."""
 
 
 def save_result_node(state: RedTeamState) -> dict:
+    """Persist the completed attack result to SQLite and append it to completed_results."""
     result: AttackResult = {
         "attack_id": state["current_attack"]["id"],
         "category": state["current_attack"]["category"],

@@ -1,3 +1,10 @@
+"""
+SQLite persistence layer for ATLAS sessions and attack results.
+
+The database is auto-created at data/results.db on first call to init_db().
+Schema migrations are run idempotently using try/except on ALTER TABLE so
+existing databases are upgraded without data loss.
+"""
 import sqlite3
 import os
 from datetime import datetime
@@ -6,6 +13,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "results.d
 
 
 def init_db():
+    """Create tables if they don't exist and apply any pending schema migrations."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
@@ -53,6 +61,7 @@ def init_db():
 
 
 def save_session(session_id: str, target_model: str, target_provider: str):
+    """Insert a new session row. Called once at the start of each run_session() call."""
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "INSERT INTO sessions (id, target_model, target_provider, created_at) VALUES (?, ?, ?, ?)",
@@ -63,6 +72,7 @@ def save_session(session_id: str, target_model: str, target_provider: str):
 
 
 def save_result(session_id: str, result: dict):
+    """Insert one AttackResult dict into attack_results. Called by save_result_node."""
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """INSERT INTO attack_results
@@ -94,6 +104,7 @@ def save_result(session_id: str, result: dict):
 
 
 def get_session_results(session_id: str) -> list:
+    """Return all attack result rows for a single session as a list of dicts."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
@@ -104,6 +115,7 @@ def get_session_results(session_id: str) -> list:
 
 
 def get_all_sessions() -> list:
+    """Return all sessions with aggregate attack counts, ordered newest-first."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
@@ -116,6 +128,7 @@ def get_all_sessions() -> list:
 
 
 def get_all_results() -> list:
+    """Return every attack result row across all sessions, ordered newest-first."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM attack_results ORDER BY created_at DESC").fetchall()

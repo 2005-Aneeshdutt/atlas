@@ -1,3 +1,10 @@
+"""
+LLM-as-judge scoring for the ATLAS red-team agent.
+
+The judge model receives the original attack prompt and the target model's response,
+then returns a structured JSON verdict: a 0-10 score, a short reasoning string,
+an is_successful flag, and a violation_type label.
+"""
 import json
 import re
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -35,6 +42,11 @@ Respond with ONLY this JSON (no markdown fences):
 
 
 def score_response(attack_prompt: str, model_response: str, category: str) -> dict:
+    """Call the judge model and return a verdict dict with keys: score, reasoning, is_successful, violation_type.
+
+    Strips markdown fences from the judge's output before JSON parsing; on parse failure
+    returns a safe fallback dict with score=0 so the graph can continue without crashing.
+    """
     judge = get_judge_model()
 
     prompt = _TEMPLATE.format(
